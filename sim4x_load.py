@@ -15,7 +15,7 @@ from ghidra.program.database.mem import FileBytes
 MEMORY_REGIONS = [
 	{
 		'name': 'Internal_ROM',
-		'start': toAddr(0x0000),
+		'start': toAddr(0x0000), # 0x0000 - 0x1fff
 		'offset': 0,
 		'size': 0x1fff,
 		'read': True,
@@ -24,16 +24,16 @@ MEMORY_REGIONS = [
 	},
 	{
 		'name': 'External_Memory',
-		'start': toAddr(0x2000),
+		'start': toAddr(0x2000), # 0x2000 - 0xD9FF
 		'offset': 0x2000,
-		'size': 0x9FFF,
+		'size': 0xB9FF,
 		'read': True,
 		'write': True,
 		'execute': False,
 	},
 	{
 		'name': 'XRAM',
-		'start': toAddr(0xE000),
+		'start': toAddr(0xE000), # 0xE000 - 0xE7FF
 		'offset': 0xE000,
 		'size': 0x7FF,
 		'read': True,
@@ -60,9 +60,9 @@ MEMORY_REGIONS = [
 	},
 	{
 		'name': 'Internal_RAM',
-		'start': toAddr(0xF600),
-		'offset': 0xF600,
-		'size': 0x5FF,
+		'start': toAddr(0xF200), # according to datasheet this starts at 0xf600, and 0xf200-0xf600 is reserved but this proves to not be the case
+		'offset': 0xF200,
+		'size': 0x9FF, # used to be 0x5ff, see above
 		'read': True,
 		'write': True,
 		'execute': False,
@@ -105,11 +105,17 @@ MEMORY_REGIONS = [
 	},
 ]
 
+SIZE_2MBIT = 262143
+SIZE_4MBIT = 524288
+
 def create_memory_region (memory, name: str, start: Address, fileBytes: FileBytes, offset: int, size: int, read: bool, write: bool, execute: bool) -> MemoryBlock:
 	block = memory.createInitializedBlock(name, start, fileBytes, offset, size, False)
 	block.setRead(read)
 	block.setWrite(write)
 	block.setExecute(execute)
+
+def compare_with_tolerance (value: int, desired: int, tolerance: int = 10) -> bool:
+	return (abs(value-desired)<tolerance)
 
 def run_script():
 	state = getState()
@@ -118,51 +124,18 @@ def run_script():
 
 	fileBytes = memory.getAllFileBytes()
 
+	if compare_with_tolerance(memory.getSize(), SIZE_4MBIT):
+		print('4mbit binary detected, likely SIMK43')
+	elif compare_with_tolerance(memory.getSize(), SIZE_2MBIT):
+		print('2mbit binary detected, likely SIMK41')
+	else:
+		print('Binary size doesn\'t come close to either 2 or 4mbit. I\'m gonna proceed, but this is most likely an invalid SIMK4x bin')
+
 	for block in memory.getBlocks():
-		print(block.getName())
 		memory.removeBlock(block, monitor)
 
 	for region in MEMORY_REGIONS:
 		create_memory_region(memory, fileBytes=fileBytes[0], **region)
-
-	stt='''simk4x_internal_rom = memory.createInitializedBlock("Internal_ROM", toAddr(0x0000), fileBytes[0], 0, 0x1fff, False)
-	simk4x_internal_rom.setRead(True)
-	simk4x_internal_rom.setWrite(False)
-	simk4x_internal_rom.setExecute(True)
-
-	simk4x_external_memory = memory.createInitializedBlock("External_Memory", toAddr(0x2000), fileBytes[0], 0x2000, 0xD9FF, False)
-	simk4x_internal_rom.setRead(True)
-	simk4x_internal_rom.setWrite(True)
-	simk4x_internal_rom.setExecute(False)
-
-	simk4x_xram = memory.createInitializedBlock("XRAM", toAddr(0xC000), fileBytes[0], 0xC000, 0x1800, False)
-	simk4x_xperhiphals = memory.createInitializedBlock("X_Periphals", toAddr(0xF000), fileBytes[0], 0xF000, 0x1800, False)
-
-	simk4x_internal_ram = memory.createInitializedBlock("Internal_RAM", toAddr(0xFA00), fileBytes[0], 0xf9fe, 0x3ff, False)
-	simk4x_internal_ram.setRead(True)
-	simk4x_internal_ram.setWrite(True)
-	simk4x_internal_ram.setExecute(False)
-
-	simk4x_internal_SFRs = memory.createInitializedBlock("Internal_SFRs", toAddr(0xFE00), fileBytes[0], 0x41fe, 0x1ff, False)
-	simk4x_internal_SFRs.setRead(True)
-	simk4x_internal_SFRs.setWrite(True)
-	simk4x_internal_SFRs.setExecute(False)
-
-	simk4x_bootloader2 = memory.createInitializedBlock("Bootloader_2", toAddr(0x88000), fileBytes[0], 0x8000, 0x7fff, False)
-	simk4x_bootloader2.setRead(True)
-	simk4x_bootloader2.setWrite(False)
-	simk4x_bootloader2.setExecute(True)
-
-
-	simk4x_calibration = memory.createInitializedBlock("Calibration", toAddr(0x90000), fileBytes[0], 0x10000, 0xFFFF, False)
-	simk4x_calibration.setRead(True)
-	simk4x_calibration.setWrite(False)
-	simk4x_calibration.setExecute(False)
-
-	simk4x_program = memory.createInitializedBlock("Program", toAddr(0xA0000), fileBytes[0], 0x20000, 0x5ffff, False)
-	simk4x_program.setRead(True)
-	simk4x_program.setWrite(False)
-	simk4x_program.setExecute(True)'''
 
 	print("Memory blocks have been re-created for the C166 firmware!")
 
