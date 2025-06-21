@@ -1,18 +1,82 @@
 #Load SIMK4x binaries
 #@author Dante
-#@category _NEW_
+#@category C167_SIMK4x_OpenGK
 #@keybinding 
 #@menupath 
 #@toolbar 
 #@runtime PyGhidra
 
+import jpype
 from ghidra.program.model.mem import MemoryBlock
 from ghidra.program.model.mem import MemoryBlockType
 from ghidra.program.model.mem import MemoryConflictException
 from ghidra.program.model.address import Address
 from ghidra.program.database.mem import FileBytes
 
-MEMORY_REGIONS = [
+ECU_IDENTIFICATION_TABLE = [
+	{
+		'offset': 0x82014, # RSW zone
+		'expected': [b'\x36\x36\x32\x31'], #6621
+		'ecu': {
+			'name': 'SIMK43 8mbit',
+			'eeprom_size_bytes': 1048576,
+			'bin_offset': 0,
+			'bootloader2_section_address': 0x88000,
+			'bootloader2_size_bytes': 0x7fff,
+			'calibration_section_address': 0x90000,
+			'calibration_size_bytes': 0x10000,
+			'program_section_address': 0xA0000,
+			'program_size_bytes': 0x5FFFF
+		}
+	},
+	{
+		'offset': 0x10040,
+		'expected': [b'\x63\x61\x36\x36'], #CA66
+		'ecu': {
+			'name': 'SIMK43 2.0 4mbit',
+			'eeprom_size_bytes': 524287,
+			'bin_offset': -0x80000,
+			'bootloader2_section_address': 0x88000,
+			'bootloader2_size_bytes': 0x7fff,
+			'calibration_section_address': 0x90000,
+			'calibration_size_bytes': 0x10000,
+			'program_section_address': 0xA0000,
+			'program_size_bytes': 0x5FFFF
+		},
+	},
+	{
+		'offset': 0x8040,
+		'expected': [b'\x63\x61\x36\x35\x34\x30\x31'],
+		'ecu': {
+			'name': 'SIMK43 V6 4mbit (5WY17)',
+			'eeprom_size_bytes': 524287,
+			'bin_offset': -0x80000,
+			'bootloader2_section_address': None,
+			'bootloader2_size_bytes': None,
+			'calibration_section_address': 0x88000,
+			'calibration_size_bytes': 0x8000,
+			'program_section_address': 0x90000,
+			'program_size_bytes': 0x6FFFF
+		}
+	},
+	{
+		'offset': 0x8040,
+		'expected': [b'\x63\x61\x36\x36\x30', b'\x63\x61\x36\x35\x32', b'\x63\x61\x36\x35\x30'], #CA660, CA652, CA650
+		'ecu': {
+			'name': 'SIMK41 / V6 2mbit',
+			'eeprom_size_bytes': 262143,
+			'bin_offset': -0x40000,
+			'bootloader2_section_address': None,
+			'bootloader2_size_bytes': None,
+			'calibration_section_address': 0x48000,
+			'calibration_size_bytes': 0x8000,
+			'program_section_address': 0x50000, 
+			'program_size_bytes': 0x2FFFF
+		}
+	}
+]
+
+C167_REGIONS = [
 	{
 		'name': 'Internal_ROM',
 		'start': toAddr(0x0000), # 0x0000 - 0x1fff
@@ -33,9 +97,9 @@ MEMORY_REGIONS = [
 	},
 	{
 		'name': 'XRAM',
-		'start': toAddr(0xE000), # 0xE000 - 0xE7FF
+		'start': toAddr(0xE000), # 0xE000 - 0xEEFF. should have been 0xE000 - 0xE7FF, but a reserved region is used
 		'offset': 0xE000,
-		'size': 0x7FF,
+		'size': 0xF00,
 		'read': True,
 		'write': True,
 		'execute': False,
@@ -75,8 +139,11 @@ MEMORY_REGIONS = [
 		'read': True,
 		'write': True,
 		'execute': False,
-	},
-	{
+	}
+]
+
+ECU_SPECIFIC_REGIONS = {
+	'bootloader2': {
 		'name': 'Bootloader_2',
 		'start': toAddr(0x88000),
 		'offset': 0x8000,
@@ -85,16 +152,16 @@ MEMORY_REGIONS = [
 		'write': False,
 		'execute': True,
 	},
-	{
+	'calibration': {
 		'name': 'Calibration',
-		'start': toAddr(0x90000),
+		'start': toAddr(0x90000), 
 		'offset': 0x10000,
 		'size': 0xFFFF,
 		'read': True,
 		'write': True,
 		'execute': False,
 	},
-	{
+	'program': {
 		'name': 'Program',
 		'start': toAddr(0xA0000),
 		'offset': 0x20000,
@@ -103,10 +170,7 @@ MEMORY_REGIONS = [
 		'write': False,
 		'execute': True,
 	},
-]
-
-SIZE_2MBIT = 262143
-SIZE_4MBIT = 524288
+}
 
 def create_memory_region (memory, name: str, start: Address, fileBytes: FileBytes, offset: int, size: int, read: bool, write: bool, execute: bool) -> MemoryBlock:
 	block = memory.createInitializedBlock(name, start, fileBytes, offset, size, False)
@@ -117,19 +181,44 @@ def create_memory_region (memory, name: str, start: Address, fileBytes: FileByte
 def compare_with_tolerance (value: int, desired: int, tolerance: int = 10) -> bool:
 	return (abs(value-desired)<tolerance)
 
+def identify_ecu (fileBytes: FileBytes):
+	for ecu_identifier in ECU_IDENTIFICATION_TABLE:
+		flag_size = len(ecu_identifier['expected'][0])
+		result = jpype.JByte[flag_size]
+		fileBytes[0].getOriginalBytes(ecu_identifier['offset'], result)
+		result = bytes(result)
+
+		if result in ecu_identifier['expected']:
+			print('Bin identified: {}'.format(ecu_identifier['ecu']['name']))
+			return ecu_identifier['ecu']
+
+	print('Failed to identify the ECU. Fallback to SIMK43 2.0')
+	return ECU_IDENTIFICATION_TABLE[1]['ecu']
+
+def generate_ecu_regions (ecu: dict) -> list:
+	regions = []
+
+	for section_name in ['bootloader2', 'calibration', 'program']:
+		if not ecu.get(f'{section_name}_section_address'):
+			continue
+
+		region = ECU_SPECIFIC_REGIONS[section_name]
+		region['start'] = toAddr(ecu.get(f'{section_name}_section_address'))
+		region['offset'] = ecu.get(f'{section_name}_section_address') + ecu['bin_offset']
+		region['size'] = ecu.get(f'{section_name}_size_bytes')
+		regions.append(region)
+
+	return regions
+
 def run_script():
 	state = getState()
 	currentProgram = state.getCurrentProgram()
 	memory = currentProgram.getMemory()
 
 	fileBytes = memory.getAllFileBytes()
+	ecu = identify_ecu(fileBytes)
 
-	if compare_with_tolerance(memory.getSize(), SIZE_4MBIT):
-		print('4mbit binary detected, likely SIMK43')
-	elif compare_with_tolerance(memory.getSize(), SIZE_2MBIT):
-		print('2mbit binary detected, likely SIMK41')
-	else:
-		print('Binary size doesn\'t come close to either 2 or 4mbit. I\'m gonna proceed, but this is most likely an invalid SIMK4x bin')
+	MEMORY_REGIONS = C167_REGIONS + generate_ecu_regions(ecu)
 
 	for block in memory.getBlocks():
 		memory.removeBlock(block, monitor)
