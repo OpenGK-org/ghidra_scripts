@@ -1,6 +1,6 @@
 #Load SIMK4x binaries
 #@author Dante
-#@category C167_SIMK4x_OpenGK
+#@category OpenGK.SIMK4x
 #@keybinding 
 #@menupath 
 #@toolbar 
