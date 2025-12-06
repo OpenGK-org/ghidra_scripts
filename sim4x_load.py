@@ -80,11 +80,13 @@ ECU_IDENTIFICATION_TABLE = [
  		'ecu': {
 			'name': 'SIMK2K (Elantra)',
 			'eeprom_size_bytes': 524287,
-			'bin_offset': -0x0, # todo
-			'calibration_section_address': 0x12000,
+			'bin_offset': -0x80000,
+			'bootloader2_section_address': 0x88000,
+			'bootloader2_size_bytes': 0x9fff,
+			'calibration_section_address': 0x92000,
 			'calibration_size_bytes': 0x12000, # 65536 bytes (64 KiB)
-			'program_section_address': 0x24000, # todo
-			'program_size_bytes': 0x5BFFF # todo
+			'program_section_address': 0xA4000,
+			'program_size_bytes': 0x5BFFF 
 		}
 	},
 ]
@@ -158,27 +160,18 @@ C167_REGIONS = [
 ECU_SPECIFIC_REGIONS = {
 	'bootloader2': {
 		'name': 'Bootloader_2',
-	#	'start': toAddr(0x88000),
-	#	'offset': 0x8000,
-	#	'size': 0x7fff,
 		'read': True,
 		'write': False,
 		'execute': True,
 	},
 	'calibration': {
 		'name': 'Calibration',
-	#	'start': toAddr(0x90000), 
-	#	'offset': 0x10000,
-	#	'size': 0xFFFF,
 		'read': True,
 		'write': True,
 		'execute': False,
 	},
 	'program': {
 		'name': 'Program',
-	#	'start': toAddr(0xA0000),
-	#	'offset': 0x20000,
-	#	'size': 0x5FFFF,
 		'read': True,
 		'write': False,
 		'execute': True,
