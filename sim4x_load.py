@@ -73,7 +73,20 @@ ECU_IDENTIFICATION_TABLE = [
 			'program_section_address': 0x50000, 
 			'program_size_bytes': 0x2FFFF
 		}
-	}
+	},
+		{
+		'offset': 0x12040,
+		'expected': [b'\x63\x61\x36\x36'], # ca66
+ 		'ecu': {
+			'name': 'SIMK2K (Elantra)',
+			'eeprom_size_bytes': 524287,
+			'bin_offset': -0x0, # todo
+			'calibration_section_address': 0x12000,
+			'calibration_size_bytes': 0x12000, # 65536 bytes (64 KiB)
+			'program_section_address': 0x24000, # todo
+			'program_size_bytes': 0x5BFFF # todo
+		}
+	},
 ]
 
 C167_REGIONS = [
@@ -145,27 +158,27 @@ C167_REGIONS = [
 ECU_SPECIFIC_REGIONS = {
 	'bootloader2': {
 		'name': 'Bootloader_2',
-		'start': toAddr(0x88000),
-		'offset': 0x8000,
-		'size': 0x7fff,
+	#	'start': toAddr(0x88000),
+	#	'offset': 0x8000,
+	#	'size': 0x7fff,
 		'read': True,
 		'write': False,
 		'execute': True,
 	},
 	'calibration': {
 		'name': 'Calibration',
-		'start': toAddr(0x90000), 
-		'offset': 0x10000,
-		'size': 0xFFFF,
+	#	'start': toAddr(0x90000), 
+	#	'offset': 0x10000,
+	#	'size': 0xFFFF,
 		'read': True,
 		'write': True,
 		'execute': False,
 	},
 	'program': {
 		'name': 'Program',
-		'start': toAddr(0xA0000),
-		'offset': 0x20000,
-		'size': 0x5FFFF,
+	#	'start': toAddr(0xA0000),
+	#	'offset': 0x20000,
+	#	'size': 0x5FFFF,
 		'read': True,
 		'write': False,
 		'execute': True,
@@ -224,6 +237,7 @@ def run_script():
 		memory.removeBlock(block, monitor)
 
 	for region in MEMORY_REGIONS:
+		print('Creating region {}'.format(region['name']))
 		create_memory_region(memory, fileBytes=fileBytes[0], **region)
 
 	print("Memory blocks have been re-created for the C166 firmware!")
